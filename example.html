@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Validated Form Example</title>
+    <style>
+        body {
+            background-color: #f4f6fc;
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        .form-container {
+            background: #fff;
+            padding: 24px 32px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            max-width: 400px;
+            margin: auto;
+        }
+        h2 {
+            color: #2a4d8f;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #2a4d8f;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 14px;
+            border: 1px solid #bfcbe3;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        input:invalid {
+            border-color: #e74c3c;
+            background-color: #fbeaea;
+        }
+        input:valid {
+            border-color: #2ecc71;
+            background-color: #eafaf1;
+        }
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        button {
+            background: #2a4d8f;
+            color: #fff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover {
+            background: #1d3557;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h2>Register</h2>
+        <form id="myForm" novalidate>
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" required minlength="3" maxlength="30" pattern="[A-Za-z ]+">
+            <div class="error" id="nameError">Please enter a valid name (letters only, 3-30 characters).</div>
+
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required>
+            <div class="error" id="emailError">Please enter a valid email address.</div>
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required minlength="6">
+            <div class="error" id="passwordError">Password must be at least 6 characters.</div>
+
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+    <script>
+        const form = document.getElementById('myForm');
+        form.addEventListener('submit', function(e) {
+            let valid = true;
+
+            // Name validation
+            const name = form.name;
+            const nameError = document.getElementById('nameError');
+            if (!name.value.match(/^[A-Za-z ]{3,30}$/)) {
+                nameError.style.display = 'block';
+                valid = false;
+            } else {
+                nameError.style.display = 'none';
+            }
+
+            // Email validation
+            const email = form.email;
+            const emailError = document.getElementById('emailError');
+            if (!email.value.match(/^[^@]+@[^@]+\.[^@]+$/)) {
+                emailError.style.display = 'block';
+                valid = false;
+            } else {
+                emailError.style.display = 'none';
+            }
+
+            // Password validation
+            const password = form.password;
+            const passwordError = document.getElementById('passwordError');
+            if (password.value.length < 6) {
+                passwordError.style.display = 'block';
+                valid = false;
+            } else {
+                passwordError.style.display = 'none';
+            }
+
+            if (!valid) {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>
