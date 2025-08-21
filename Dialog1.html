@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Account Rewards Calculator</title>
+    <script>
+        function calculateRewards() {
+            // Assuming you have an Account object with a totalAmount property and rewardPoints field
+
+            // Placeholder values, replace them with actual data from your system
+            var account = {
+                totalAmount: 1500, // Replace with actual total amount from closed own opportunities
+                rewardPoints: 0
+            };
+
+            // Business logic
+            if (account.totalAmount < 1000) {
+                account.rewardPoints = account.totalAmount * 1;
+            } else if (account.totalAmount >= 1000 && account.totalAmount < 25000) {
+                account.rewardPoints = account.totalAmount * 3;
+            } else {
+                account.rewardPoints = account.totalAmount * 5;
+            }
+
+            // Update the reward points field in the account
+            document.getElementById('rewardPoints').value = account.rewardPoints;
+        }
+
+        function showDialog() {
+            var dialog = document.getElementById('rewardDialog');
+            dialog.showModal();
+        }
+
+        function closeDialog() {
+            var dialog = document.getElementById('rewardDialog');
+            dialog.close();
+        }
+
+        function submitDialog() {
+            var rewardType = document.querySelector('input[name="rewardType"]:checked').value;
+
+            if (rewardType === 'cashback') {
+                alert('Feature under development');
+            } else if (rewardType === 'rewards') {
+                calculateRewards();
+                closeDialog();
+            }
+        }
+    </script>
+</head>
+<body>
+
+<button onclick="showDialog()">Calculate Rewards</button>
+
+<dialog id="rewardDialog">
+    <form>
+        <label>
+            <input type="radio" name="rewardType" value="cashback" checked> Cashback
+        </label>
+        <label>
+            <input type="radio" name="rewardType" value="rewards"> Rewards
+        </label>
+        <br>
+        <button type="button" onclick="submitDialog()">Submit</button>
+    </form>
+</dialog>
+
+<!-- Display the Reward Points field -->
+<label for="rewardPoints">Reward Points:</label>
+<input type="text" id="rewardPoints" readonly>
+
+</body>
+</html>
+ 

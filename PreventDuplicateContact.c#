@@ -1,0 +1,61 @@
+//need to  restrict the user to create account when the same emailed and phone ono of the account is already existing in the system 
+
+using System;
+using System.Linq;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+
+namespace PreventDuplicateContact
+{
+    public class DuplicateContactValidator : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            // Get the context
+            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            IOrganizationServiceFactory serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            IOrganizationService service = serviceFactory.CreateOrganizationService(context.UserId);
+
+            // Check if the input parameters contain a target entity
+            if (context.InputParameters.Contains("Target") && context.InputParameters["Target"] is Entity)
+            {
+                Entity entity = (Entity)context.InputParameters["Target"];
+
+                if (entity.LogicalName != "contact")
+                    return;
+
+                // Get email and phone number (telephone1)
+                string email = entity.Contains("emailaddress1") ? entity["emailaddress1"].ToString() : null;
+                string phone = entity.Contains("telephone1") ? entity["telephone1"].ToString() : null;
+
+                if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(phone))
+                    return;
+
+                // Build the query to find duplicates
+                QueryExpression query = new QueryExpression("contact")
+                {
+                    ColumnSet = new ColumnSet("fullname"), // only need a reference column
+                    Criteria = new FilterExpression(LogicalOperator.Or)
+                };
+
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    query.Criteria.AddCondition("emailaddress1", ConditionOperator.Equal, email);
+                }
+
+                if (!string.IsNullOrWhiteSpace(phone))
+                {
+                    query.Criteria.AddCondition("telephone1", ConditionOperator.Equal, phone);
+                }
+
+                // Execute the query
+                EntityCollection results = service.RetrieveMultiple(query);
+
+                if (results.Entities.Any())
+                {
+                    throw new InvalidPluginExecutionException("A contact with the same email or phone number already exists in the system.");
+                }
+            }
+        }
+    }
+}

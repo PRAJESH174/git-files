@@ -1,0 +1,135 @@
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+using Newtonsoft.Json;
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace D365ApolloIntegration
+{
+    public class ApolloDataSyncPlugin : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            ITracingService tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            IOrganizationServiceFactory serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            IOrganizationService service = serviceFactory.CreateOrganizationService(context.UserId);
+
+            try
+            {
+                string apolloApiKey = RetrieveApolloApiKey(); // 🔐 Replace this with a secure fetch
+                string apolloContactIdToSync = "5e66b6381e05b4008c8331b8";
+
+                tracingService.Trace($"Attempting to retrieve contact from Apollo.io with ID: {apolloContactIdToSync}");
+                ApolloContact apolloContact = GetApolloContactSync(apolloContactIdToSync, apolloApiKey, tracingService);
+
+                if (apolloContact != null)
+                {
+                    tracingService.Trace($"Successfully retrieved Apollo.io contact: {apolloContact.First_name} {apolloContact.Last_name}");
+
+                    Entity existingContact = FindD365Contact(service, apolloContact.Id, apolloContact.Email);
+                    if (existingContact != null)
+                    {
+                        tracingService.Trace($"Updating existing contact: {existingContact.Id}");
+                        UpdateD365Contact(service, existingContact, apolloContact, tracingService);
+                    }
+                    else
+                    {
+                        tracingService.Trace("Creating new D365 contact.");
+                        CreateD365Contact(service, apolloContact, tracingService);
+                    }
+                }
+                else
+                {
+                    tracingService.Trace($"Apollo.io contact not found for ID: {apolloContactIdToSync}");
+                }
+            }
+            catch (Exception ex)
+            {
+                tracingService.Trace("ApolloDataSyncPlugin error: " + ex.ToString());
+                throw new InvalidPluginExecutionException("Error during Apollo.io sync.", ex);
+            }
+        }
+
+        private void CreateD365Contact(IOrganizationService service, ApolloContact apolloContact, ITracingService tracingService)
+        {
+            throw new NotImplementedException();
+        }
+
+        private Entity FindD365Contact(IOrganizationService service, string id, string email)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void UpdateD365Contact(IOrganizationService service, Entity existingContact, ApolloContact apolloContact, ITracingService tracingService)
+        {
+            throw new NotImplementedException();
+        }
+
+        // --- Secure API key retrieval ---
+        private string RetrieveApolloApiKey()
+        {
+            // Replace with Azure Key Vault, environment variable, or CRM config
+            return "REPLACE_WITH_SECURE_API_KEY";
+        }
+
+        // --- Synchronous wrapper for async call ---
+        private ApolloContact GetApolloContactSync(string contactId, string apiKey, ITracingService tracer)
+        {
+            return Task.Run(() => GetApolloContactAsync(contactId, apiKey, tracer)).GetAwaiter().GetResult();
+        }
+
+        private async Task<ApolloContact> GetApolloContactAsync(string contactId, string apiKey, ITracingService tracingService)
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                client.BaseAddress = new Uri("https://api.apollo.io/v1/");
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+
+                HttpResponseMessage response = await client.GetAsync($"contacts/{contactId}");
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = JsonConvert.DeserializeObject<ApolloContactResponse>(responseBody);
+                    return result?.contact;
+                }
+                else
+                {
+                    tracingService.Trace($"Apollo API error {response.StatusCode}: {responseBody}");
+                    return null;
+                }
+            }
+        }
+
+        // --- DTO response wrapper ---
+        public class ApolloContactResponse
+        {
+            public ApolloContact contact { get; set; }
+        }
+
+        // --- Updated ApolloContact DTO ---
+        public class ApolloContact
+        {
+            public string Id { get; set; }
+            public string First_name { get; set; }
+            public string Last_name { get; set; }
+            public string Email { get; set; }
+            public string Title { get; set; }
+            public string phone { get; set; }
+            public string organization_name { get; set; }
+            public string organization_website { get; set; }
+
+            [JsonProperty("organization_id")]
+            public string organization_apollo_id { get; set; }
+        }
+
+        // --- Other methods (unchanged) ---
+        // Use your existing methods: 
+        // FindD365Contact, CreateD365Contact, UpdateD365Contact, FindOrCreateAccount
+    }
+}
