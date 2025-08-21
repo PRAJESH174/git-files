@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculate Rewards</title>
+    <style>
+        /* Add your styling here */
+    </style>
+</head>
+<body>
+
+<div>
+    <button onclick="showDialog()">Calculate Rewards</button>
+</div>
+
+<div id="dialog" style="display: none;">
+    <form onsubmit="submitForm(); return false;">
+        <label>
+            <input type="radio" name="rewardType" value="cashback"> Cashback
+        </label>
+        <label>
+            <input type="radio" name="rewardType" value="rewards"> Rewards
+        </label>
+        <button type="submit">Submit</button>
+    </form>
+</div>
+
+<script>
+    function showDialog() {
+        document.getElementById('dialog').style.display = 'block';
+    }
+
+    function submitForm() {
+        var rewardType = document.querySelector('input[name="rewardType"]:checked');
+
+        if (!rewardType) {
+            alert('Please select a reward type');
+            return;
+        }
+
+        var rewardTypeValue = rewardType.value;
+
+        if (rewardTypeValue === 'cashback') {
+            alert('Feature under development');
+        } else if (rewardTypeValue === 'rewards') {
+            // Call a function to fetch and update reward points
+            updateRewardPoints();
+        }
+
+        document.getElementById('dialog').style.display = 'none';
+    }
+
+    function updateRewardPoints() {
+        // Simulate fetching data - replace this with actual logic
+        var totalamount = 3000; // Replace with the actual total amount from opportunities
+        var ssems_rewardpoints;
+
+        if (totalamount < 1000) {
+            ssems_rewardpoints = totalamount;
+        } else if (totalamount >= 1000 && totalamount < 25000) {
+            ssems_rewardpoints = totalamount * 3;
+        } else {
+            ssems_rewardpoints = totalamount * 3;
+            ssems_rewardpoints = totalamount * 5;
+        }
+
+        // Simulate updating the account field - replace this with actual logic
+        var ssems_rewardpoints = document.getElementById('ssems_rewardpoints');
+        ssems_rewardpoints.innerHTML = ssems_rewardpoints;
+    }
+</script>
+
+<!-- Display the reward points -->
+<div>
+    <label>Reward Points: </label>
+    <span id="ssems_rewardpoints">0</span>
+</div>
+
+</body>
+</html>

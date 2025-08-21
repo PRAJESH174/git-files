@@ -1,0 +1,61 @@
+
+namespace MyFirstAzureWebApp.Pages
+{
+    public class IndexModel : PageModel
+    {
+        public int LeadCount { get; set; }
+        public int OpportunityCount { get; set; }
+        public List<Activity> RecentActivities { get; set; } = new();
+
+        public void OnGet()
+        {
+            LeadCount = GetLeadCount();
+            OpportunityCount = GetOpportunityCount();
+            RecentActivities = GetRecentActivities();
+        }
+
+        private static int GetLeadCount()
+        {
+            // Simulate lead count from database
+            return 5;
+        }
+
+        private int GetOpportunityCount()
+        {
+            // Simulate opportunity count from database
+            return 3;
+        }
+
+        private List<Activity> GetRecentActivities()
+        {
+            return new List<Activity>
+            {
+                new Activity
+                {
+                    Date = DateTime.Now.AddDays(-1),
+                    Type = "Lead",
+                    Description = "New lead added: John Doe"
+                },
+                new Activity
+                {
+                    Date = DateTime.Now.AddDays(-2),
+                    Type = "Opportunity",
+                    Description = "Opportunity updated: Upgrade Plan"
+                },
+                new Activity
+                {
+                    Date = DateTime.Now.AddDays(-3),
+                    Type = "Lead",
+                    Description = "Lead contacted: Jane Smith"
+                }
+            };
+        }
+    }
+
+    public class Activity
+    {
+        public DateTime Date { get; set; }
+        public string Type { get; set; }
+        public string Description { get; set; }
+    }
+}

@@ -1,0 +1,79 @@
+using Microsoft.Crm.Sdk.Messages;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace LogGenerator
+{
+    public class LogGenPoc : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            IOrganizationServiceFactory factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            IOrganizationService service = factory.CreateOrganizationService(context.UserId);
+            ITracingService tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            try
+            {
+                int recCount = 0;
+
+                EntityCollection result1 = (EntityCollection)context.OutputParameters["BusinessEntityCollection"];
+                if (result1 != null)
+                {
+                    if (context.SharedVariables.Contains("RecordCount"))
+                    {
+                        recCount = Int32.Parse(context.SharedVariables["RecordCount"].ToString());
+                        recCount += result1.Entities.Count;
+                        if (result1.MoreRecords)
+                        {
+                            context.SharedVariables["RecordCount"] = recCount;
+                        }
+                        else if (!result1.MoreRecords)
+                        {
+                            tracingService.Trace("Record Count" + recCount);
+                            tracingService.Trace("User Id" + context.InitiatingUserId);
+
+                            // Check if the operation is an Excel export
+                            if (context.ParentContext?.MessageName == "ExportToExcel")
+                            {
+                                // Log the export details only if the threshold is exceeded
+                                if (recCount > 50000)
+                                {
+                                    LogExportDetails(service, context.InitiatingUserId, recCount);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        recCount += result1.Entities.Count;
+                        context.SharedVariables["RecordCount"] = recCount;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidPluginExecutionException("An error occurred in the plugin.", ex);
+            }
+        }
+
+        private void LogExportDetails(IOrganizationService service, Guid userId, int recordCount)
+        {
+            try
+            {
+                Entity logEntity = new Entity("new_exportlog");
+                logEntity.Attributes["new_exportinitiateduser"] = new EntityReference("systemuser", userId);
+                logEntity.Attributes["new_totalrecordsexportcount"] = recordCount; //int
+                service.Create(logEntity);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidPluginExecutionException("An error occurred while logging export details.", ex);
+            }
+        }
+    }
+}

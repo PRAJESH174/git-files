@@ -1,0 +1,43 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Xrm.Sdk;
+
+namespace Account.PluginPreOperationSample
+{
+    public class PluginPreOperationSampl : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            // Implementation of the plugin logic goes here.
+            try
+            {
+                IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+
+                if (context.InputParameters.Contains("Target") && context.InputParameters["Target"] is Entity)
+                {
+                    Entity entity = (Entity)context.InputParameters["Target"];
+
+                    if (entity.LogicalName == "account")
+                    {
+                        if (entity.Attributes.Contains("tickersymbol"))
+                        {
+                            // Get the current attribute value
+                            var tickersymbol = entity["tickersymbol"].ToString();
+
+                            // Update the attribute
+                            entity["tickersymbol"] = "NYSE: " + tickersymbol;
+                        }
+                    }
+                }
+            }
+            catch (InvalidPluginExecutionException e)
+            {
+                // catch exception
+                throw new InvalidPluginExecutionException("An error has occurred: " + e.Message);
+            }
+        }
+    }
+}
