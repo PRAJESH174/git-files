@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BMI Calculator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            background: #f4f6f8;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .bmi-container {
+            background: #fff;
+            padding: 2rem 2.5rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            width: 370px;
+        }
+        .bmi-container h2 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+        .bmi-container label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            text-align: left;
+        }
+        .bmi-container input[type="number"],
+        .bmi-container select {
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 1.2rem;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+        .bmi-container .height-group {
+            display: flex;
+            gap: 10px;
+        }
+        .bmi-container .height-group input {
+            width: 48%;
+        }
+        .bmi-container button {
+            width: 100%;
+            padding: 0.7rem;
+            background: #0078d4;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-bottom: 1rem;
+            transition: background 0.2s;
+        }
+        .bmi-container button:hover {
+            background: #005fa3;
+        }
+        .result {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #222;
+            margin-top: 1rem;
+        }
+        .category {
+            font-weight: bold;
+            color: #0078d4;
+        }
+    </style>
+</head>
+<body>
+    <div class="bmi-container">
+        <h2>BMI Calculator</h2>
+        <form id="bmiForm">
+            <label for="gender">Gender:</label>
+            <select id="gender" required>
+                <option value="">Select Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+            </select>
+            <label for="age">Age:</label>
+            <input type="number" id="age" min="1" max="120" required>
+            <label>Height:</label>
+            <div class="height-group">
+                <input type="number" id="heightFeet" min="0" placeholder="Feet" required>
+                <input type="number" id="heightInches" min="0" max="11" placeholder="Inches" required>
+            </div>
+            <label for="weight">Weight (kg):</label>
+            <input type="number" id="weight" min="1" step="any" required>
+            <button type="submit">Calculate BMI</button>
+        </form>
+        <div class="result" id="result"></div>
+    </div>
+    <script>
+        document.getElementById('bmiForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const gender = document.getElementById('gender').value;
+            const age = parseInt(document.getElementById('age').value);
+            const weight = parseFloat(document.getElementById('weight').value);
+            const feet = parseInt(document.getElementById('heightFeet').value);
+            const inches = parseInt(document.getElementById('heightInches').value);
+
+            if (!gender || isNaN(age) || age < 1 || isNaN(weight) || weight < 1 || isNaN(feet) || feet < 0 || isNaN(inches) || inches < 0 || inches > 11) {
+                document.getElementById('result').textContent = 'Please enter valid values for all fields.';
+                return;
+            }
+
+            // Convert height to meters
+            const totalInches = (feet * 12) + inches;
+            const heightM = totalInches * 0.0254;
+
+            if (heightM <= 0) {
+                document.getElementById('result').textContent = 'Please enter a valid height.';
+                return;
+            }
+
+            const bmi = weight / (heightM * heightM);
+            let category = '';
+            if (bmi < 18.5) {
+                category = 'Underweight';
+            } else if (bmi < 24.9) {
+                category = 'Normal weight';
+            } else if (bmi < 29.9) {
+                category = 'Overweight';
+            } else {
+                category = 'Obesity';
+            }
+            document.getElementById('result').innerHTML = 
+                `Gender: <strong>${gender.charAt(0).toUpperCase() + gender.slice(1)}</strong><br>
+                Age: <strong>${age}</strong><br>
+                Height: <strong>${feet} ft ${inches} in</strong><br>
+                Your BMI is <strong>${bmi.toFixed(2)}</strong><br>
+                <span class="category">${category}</span>`;
+        });
+    </script>
+    </body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Love Calculator</title>
+    <style>
+        body {
+            background: #f8f8f8;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 400px;
+            margin: 60px auto;
+            background: #fff;
+            padding: 32px 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            text-align: center;
+        }
+        h1 {
+            color: #6a7faf;
+            margin-bottom: 24px;
+        }
+        input[type="text"] {
+            width: 90%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #69abb2;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button {
+            background: #316267;
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #5e7854;
+        }
+        #result {
+            margin-top: 24px;
+            font-size: 18px;
+            color: #333;
+            min-height: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Love Calculator</h1>
+        <form id="loveForm">
+            <input type="text" id="name1" placeholder="Your Name" required>
+            <input type="text" id="name2" placeholder="Partner's Name" required>
+            <button type="submit">Calculate</button>
+        </form>
+        <div id="result"></div>
+    </div>
+    <script>
+        document.getElementById("loveForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            const name1Input = document.getElementById("name1");
+            const name2Input = document.getElementById("name2");
+            const result = document.getElementById("result");
+
+            const name1 = name1Input.value.trim();
+            const name2 = name2Input.value.trim();
+
+            if (name1 === "" || name2 === "") {
+                alert("Please enter both names.");
+                result.innerHTML = "";
+                return;
+            }
+
+            const lovePercentage = Math.floor(Math.random() * 101);
+            result.innerHTML = `${name1} and ${name2}'s Love Percentage: <strong>${lovePercentage}%</strong>`;
+        });
+    </script>

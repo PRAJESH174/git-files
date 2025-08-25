@@ -1,0 +1,77 @@
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: linear-gradient(135deg, #fff0f6 0%, #92b3bd 100%);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    margin: 0;
+}
+
+.container {
+    width: 500px;
+    background-color: #cbd1d8;
+    padding: 50px 40px;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    border: 2px solid #8b7580;
+    text-align: center;
+}
+
+h2 {
+    color: #a8c2cf;
+    font-size: 28px;
+    margin-bottom: 30px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+.love-calculator label {
+    display: block;
+    color: #9ed0f2;
+    font-size: 18px;
+    margin-bottom: 8px;
+    text-align: left;
+}
+
+.love-calculator input[type="text"] {
+    width: 100%;
+    padding: 12px 14px;
+    margin-bottom: 22px;
+    border: 1px solid #59789b;
+    border-radius: 6px;
+    font-size: 16px;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+
+.love-calculator input[type="text"]:focus {
+    border-color: #a17cf0;
+    outline: none;
+}
+
+.love-calculator button {
+    background-color: #2a3c89;
+    color: #fff;
+    border: none;
+    padding: 14px 32px;
+    border-radius: 6px;
+    font-size: 18px;
+    cursor: pointer;
+    font-weight: 500;
+    box-shadow: 0 2px 6px rgba(255, 133, 192, 0.15);
+    transition: background 0.2s;
+}
+
+.love-calculator button:hover {
+    background-color: #8892b8;
+}
+
+.result {
+    margin-top: 30px;
+    font-size: 22px;
+    color: #93d6ae;
+    font-weight: 500;
+    min-height: 32px;
+    letter-spacing: 1px;
+}
