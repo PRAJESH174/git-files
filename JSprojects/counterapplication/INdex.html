@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Counter Application</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px; 
+            background: linear-gradient(135deg, #a0b0cf 0%, #59749a 100%);
+        }
+        .main-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 32px;
+        }
+        .container { 
+            max-width: 350px; 
+            min-width: 300px;
+            margin: 0; 
+            padding: 20px; 
+            border: 1px solid #ccc; 
+            border-radius: 12px; 
+            background: #ffffffcc;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        .display { 
+            font-size: 2em; 
+            margin-bottom: 20px; 
+            text-align: center; 
+            background: #81929a;
+            color: #693131;
+            padding: 12px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(129, 83, 83, 0.15);
+        }
+        .controls { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 10px; 
+            justify-content: center; 
+        }
+        button { 
+            padding: 10px 20px; 
+            font-size: 1em; 
+            cursor: pointer; 
+            background: #92a8d1;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #034f84;
+        }
+        input[type="number"] { 
+            width: 80px; 
+            padding: 5px; 
+            font-size: 1em; 
+            border-radius: 6px;
+            border: 1px solid #92a8d1;
+            background: #fef6e4;
+        }
+        /* Example second container for demonstration */
+        .container.secondary {
+            background: #eaf6ffcc;
+            border-color: #92a8d1;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <div class="container">
+            <div class="display" id="counterDisplay">0</div>
+            <div style="text-align:center; margin-bottom:10px;">
+                <input type="number" id="valueInput" placeholder="Enter value" />
+            </div>
+            <div class="controls">
+                <button onclick="add()">Add</button>
+                <button onclick="subtract()">Subtract</button>
+                <button onclick="multiply()">Multiply</button>
+                <button onclick="divide()">Divide</button>
+                <button onclick="percentage()">Percentage</button>
+                <button onclick="submit()">Submit</button>
+                <button onclick="reset()">Reset</button>
+            </div>
+        </div>
+        <!-- Example second container, remove or replace as needed -->
+        <div class="container secondary">
+            <h3 style="text-align:center;">Instructions</h3>
+            <ul>
+                <li>Enter a value and use the buttons to perform operations.</li>
+                <li>Click "Reset" to clear the counter.</li>
+                <li>All results are shown on the left.</li>
+            </ul>
+        </div>
+    </div>
+    <script>
+        let counter = 0;
+
+        function updateDisplay() {
+            document.getElementById('counterDisplay').textContent = counter;
+        }
+
+        function getInputValue() {
+            const val = parseFloat(document.getElementById('valueInput').value);
+            return isNaN(val) ? 0 : val;
+        }
+
+        function add() {
+            counter += getInputValue();
+            updateDisplay();
+        }
+
+        function subtract() {
+            counter -= getInputValue();
+            updateDisplay();
+        }
+
+        function multiply() {
+            counter *= getInputValue();
+            updateDisplay();
+        }
+
+        function divide() {
+            const val = getInputValue();
+            if (val !== 0) {
+                counter /= val;
+            } else {
+                alert("Cannot divide by zero!");
+            }
+            updateDisplay();
+        }
+
+        function percentage() {
+            counter = (counter * getInputValue()) / 100;
+            updateDisplay();
+        }
+
+        function submit() {
+            counter = getInputValue();
+            updateDisplay();
+        }
+
+        function reset() {
+            counter = 0;
+            document.getElementById('valueInput').value = '';
+            updateDisplay();
+        }
+
+        updateDisplay();
+    </script>
+</body>
