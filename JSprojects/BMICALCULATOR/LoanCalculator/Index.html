@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bank Loan Calculator</title>
+  <style>
+    :root{
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --primary: #2e8b57;
+      --primary-dark:#27664a;
+      --text: #1f2d3d;
+      --muted: #5c6b7a;
+      --line: #e5e7eb;
+      --shadow: 0 10px 25px rgba(0,0,0,.08);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      background: radial-gradient(circle at 20% -10%, rgba(46, 139, 87, 0.08), transparent 40%),
+                  radial-gradient(circle at 100% 0%, rgba(0, 0, 0, 0.04), transparent 40%),
+                  var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+
+    .card {
+      width: min(600px, 92vw);
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px 28px 26px;
+      border: 1px solid var(--line);
+    }
+
+    .title {
+      text-align: center;
+      font-weight: 700;
+      font-size: 1.4rem;
+      letter-spacing: .2px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: .92rem;
+      margin-bottom: 18px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 18px;
+      align-items: center;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: .88rem;
+      color: var(--muted);
+    }
+
+    input[type="number"] {
+      -webkit-appearance: none;
+      appearance: textfield;
+      width: 100%;
+      padding: 12px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 1rem;
+      background: #fff;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    input[type="number"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(46,139,87,.08);
+    }
+
+    .actions {
+      display: grid;
+      place-items: center;
+      margin-top: 6px;
+    }
+
+    button {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: #fff;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 28px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform .04s ease-in-out;
+    }
+
+    button:active { transform: scale(0.99); }
+
+    .results {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: #f7fbf9;
+      border: 1px solid #e6f0ea;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .result-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .result-label {
+      font-size: .88rem;
+      color: var(--muted);
+    }
+
+    .result-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #1f2d3d;
+    }
+
+    .chart-container {
+      margin-top: 20px;
+      display: none;
+    }
+
+    @media (max-width: 700px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .results {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    :focus-visible {
+      outline: 3px solid rgba(46,139,87,.4);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="card" aria-label="Loan Calculator">
+      <h1 class="title">Loan Calculator</h1>
+      <p class="subtitle">Estimate your monthly payment, total interest, and overall cost.</p>
+
+      <form id="loanForm" autocomplete="off" onsubmit="return false;">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="amount">Loan Amount</label>
+            <input id="amount" type="number" min="0" step="0.01" placeholder="e.g. 10000" required />
+          </div>
+
+          <div class="form-group">
+            <label for="rate">Interest Rate (%)</label>
+            <input id="rate" type="number" min="0" step="0.01" placeholder="e.g. 4.5" required />
+          </div>
+
+          <div class="form-group">
+            <label for="term">Loan Term (Months)</label>
+            <input id="term" type="number" min="1" step="1" placeholder="e.g. 36" required />
+          </div>
+
+          <div class="form-group" aria-label="term-units">
+            <label>&nbsp;</label>
+            <div style="height:1px"></div>
+            <div style="display:flex; align-items:center; gap:8px; padding-top:4px;">
+              <span style="font-size:.85rem; color:var(--muted)">Units: Months</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="calculateBtn" aria-label="Calculate loan">Calculate</button>
+        </div>
+      </form>
+
+      <div class="results" id="results" aria-live="polite" style="display:none;">
+        <div class="result-item">
+          <span class="result-label">Monthly Payment</span>
+          <span class="result-value" id="monthly">0.00</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Total Interest</span>
+          <span class="result-value" id="interest">0.00</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Total Payment</span>
+          <span class="result-value" id="total">0.00</span>
+        </div>
+      </div>
+
+      <div class="chart-container" id="chartBox">
+        <canvas id="loanChart" width="400" height="300"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    function calculateLoan(amount, annualRate, months) {
+      if (months <= 0) return { monthly: 0, totalInterest: 0, totalPayment: 0 };
+
+      if (annualRate === 0) {
+        const pmt = amount / months;
+        return { monthly: pmt, totalInterest: 0, totalPayment: amount };
+      }
+
+      const r = annualRate / 100 / 12;
+      const denom = 1 - Math.pow(1 + r, -months);
+      const pmt = (amount * r) / denom;
+      const totalPaid = pmt * months;
+      const totalInterest = totalPaid - amount;
+
+      return { monthly: pmt, totalInterest, totalPayment: totalPaid };
+    }
+
+    const amountEl = document.getElementById('amount');
+    const rateEl = document.getElementById('rate');
+    const termEl = document.getElementById('term');
+    const btn = document.getElementById('calculateBtn');
+    const resultsBox = document.getElementById('results');
+    const monthlyEl = document.getElementById('monthly');
+    const interestEl = document.getElementById('interest');
+    const totalEl = document.getElementById('total');
+    const chartBox = document.getElementById('chartBox');
+    const ctx = document.getElementById('loanChart');
+
+    let chart;
+
+    function formatNumber(n){
+      return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateResults() {
+      const amount = parseFloat(amountEl.value);
+      const rate = parseFloat(rateEl.value);
+      const months = parseInt(termEl.value, 10);
+
+      if (Number.isFinite(amount) && Number.isFinite(rate) && Number.isFinite(months) && amount > 0 && months > 0 && rate >= 0) {
+        const { monthly, totalInterest, totalPayment } = calculateLoan(amount, rate, months);
+
+        monthlyEl.textContent = formatNumber(monthly);
+        interestEl.textContent = formatNumber(totalInterest);
+        totalEl.textContent = formatNumber(totalPayment);
+
+        resultsBox.style.display = 'grid';
+        chartBox.style.display = 'block';
+
+        // Chart update
+        if (chart) chart.destroy();
+        chart = new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: ['Principal', 'Interest'],
+            datasets: [{
+              data: [amount, totalInterest],
+              backgroundColor: ['#2e8b57', '#f39c12'],
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: 'bottom' }
+            }
+          }
+        });
+      } else {
+        resultsBox.style.display = 'none';
+        chartBox.style.display = 'none';
+      }
+    }
+
+    btn.addEventListener('click', updateResults);
+  </script>
+</body>
+</html>
