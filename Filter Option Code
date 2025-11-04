@@ -1,0 +1,58 @@
+function filterOptionSetValue(executionContext) {
+    var formContext = executionContext.getFormContext();
+    
+    // Logical name of your option set field
+    var optionSetFieldName = "new_optionsetfield";
+    
+    // Get the current user's id (remove braces)
+    var currentUserId = Xrm.Utility.getGlobalContext().userSettings.userId.replace(/[{}]/g, "");
+
+    // user1 and user2 GUIDs - replace these with your actual GUIDs
+    var user1Id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
+    var user2Id = "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy";
+
+    // Options assigned to each user (option values, not labels!)
+    var user1Options = [1, 2, 3, 4, 5, 6, 7];   // CHANGE to your required values
+    var user2Options = [8, 9, 10, 11, 12, 13, 14, 15]; // CHANGE to your required values
+
+    // Default options for each user
+    var user1DefaultOption = 1;   // Change to desired default option value for user1
+    var user2DefaultOption = 8;   // Change to desired default option value for user2
+
+    // Get the option set control
+    var control = formContext.getControl(optionSetFieldName);
+
+    if (control) {
+        // Show/hide logic
+        var optionsToShow = [];
+        var defaultOptionValue = null;
+        if (currentUserId === user1Id) {
+            optionsToShow = user1Options;
+            defaultOptionValue = user1DefaultOption;
+        } else if (currentUserId === user2Id) {
+            optionsToShow = user2Options;
+            defaultOptionValue = user2DefaultOption;
+        } else {
+            // Optionally show all for other users, or none
+            optionsToShow = user1Options.concat(user2Options);
+            defaultOptionValue = null; // Or set a generic default if you want
+        }
+
+        // Hide all options first
+        control.clearOptions();
+
+        // Add only the required options
+        var allOptions = formContext.getAttribute(optionSetFieldName).getOptions();
+        for (var i = 0; i < allOptions.length; i++) {
+            var opt = allOptions[i];
+            if (optionsToShow.includes(opt.value)) {
+                control.addOption(opt);
+            }
+        }
+
+        // Set default value if not already set
+        if (defaultOptionValue && formContext.getAttribute(optionSetFieldName).getValue() !== defaultOptionValue) {
+            formContext.getAttribute(optionSetFieldName).setValue(defaultOptionValue);
+        }
+    }
+}
