@@ -35,7 +35,18 @@ namespace IsecPluginAssembly
                         tracingService.Trace($"Incident Id {TargetEntity.Id}");
                         if (TargetEntity.LogicalName == "incident") // Case
                         {
-                            Entity postImage = context.PostEntityImages["postcaseimage"];
+                            // Fix: check post image exists before using it
+                            Entity postImage = null;
+                            if (context.PostEntityImages != null && context.PostEntityImages.Contains("postcaseimage"))
+                            {
+                                postImage = context.PostEntityImages["postcaseimage"];
+                            }
+                            else
+                            {
+                                // fallback to target if needed (or throw if post image is required)
+                                postImage = TargetEntity;
+                            }
+
                             Guid category = (postImage.Contains("isec_srtype2") && postImage.Attributes["isec_srtype2"] != null) ?
                                 postImage.GetAttributeValue<EntityReference>("isec_srtype2").Id : Guid.Empty;
 
@@ -185,14 +196,14 @@ namespace IsecPluginAssembly
                                         string subModuleName = (subcategoryEntity.Contains("isec_name") && subcategoryEntity.Attributes["isec_name"] != null) ?
                                             subcategoryEntity.GetAttributeValue<string>("isec_name") : string.Empty;
 
-                                        // Check if sub-module is Compliance or RISK Data requiring approval
-                                        if (subModuleName.ToLower().Contains("compliance") || subModuleName.ToLower().Contains("risk"))
+                                        if (!string.IsNullOrEmpty(subModuleName) && (subModuleName.IndexOf("compliance", StringComparison.OrdinalIgnoreCase) >= 0
+                                            || subModuleName.IndexOf("risk", StringComparison.OrdinalIgnoreCase) >= 0))
                                         {
                                             tracingService.Trace("Compliance/RISK Data detected - Adding approval requirement");
-                                            // Set approval required flag
                                             Entity caseUpdate = new Entity(postImage.LogicalName, postImage.Id);
                                             caseUpdate["isec_approvalrequired"] = true;
-                                            caseUpdate["isec_approvallevel"] = new OptionSetValue(560300001); // Approval Lvl1
+                                            // Set to Unapproved so AssignCaseTicketing detects and assigns to Approval Level 1 Team
+                                            caseUpdate["isec_approvallevel"] = new OptionSetValue(560300000); // Unapproved
                                             service.Update(caseUpdate);
                                         }
                                     }
@@ -238,14 +249,15 @@ namespace IsecPluginAssembly
 
         #region Round Robin
 
+        // Fix: RoundRobin - avoid using caseEnf.Id before null check
         public static void RoundRobin(IOrganizationService service, ITracingService tracingService, EntityReference caseEnf)
         {
-            tracingService.Trace($"Inside Ticketing RoundRobin {caseEnf.Id}");
             if (caseEnf == null)
             {
-                tracingService.Trace("Invalidlead");
+                tracingService.Trace("RoundRobin: caseEnf is null or empty");
                 return;
             }
+            tracingService.Trace($"Inside Ticketing RoundRobin {caseEnf.Id}");
             QueryExpression userQuery = new QueryExpression("systemuser");
             userQuery.ColumnSet = new ColumnSet("isec_roundrobinflag");
             userQuery.Criteria.AddCondition("isec_ticketinguser", ConditionOperator.Equal, true);
@@ -376,14 +388,15 @@ namespace IsecPluginAssembly
 
         #region TicketingSR Assignment
 
+        // Fix: AssignCaseTicketing - null-check srType2enf before referencing Name
         public static void AssignCaseTicketing(IOrganizationService service, ITracingService tracer, EntityReference srType2enf, Entity postimage, EntityReference moduleEnf)
         {
-            tracer.Trace($"Inside AssignCase Srtype2 {srType2enf.Name}");
             if (srType2enf == null)
             {
+                tracer.Trace("AssignCaseTicketing: srType2enf is null");
                 return;
             }
-
+            tracer.Trace($"Inside AssignCase Srtype2 {(!string.IsNullOrEmpty(srType2enf.Name) ? srType2enf.Name : srType2enf.Id.ToString())}");
             //*****START: IMPLEMENTED LOGIC - QUERY ASSIGNMENT CONFIGURATOR WITH MODULE HANDLING*****
             QueryExpression query = new QueryExpression("isec_ticketingassignmentconfigurator");
             query.Criteria.AddCondition("isec_srtype2", ConditionOperator.Equal, srType2enf.Id);
@@ -439,6 +452,17 @@ namespace IsecPluginAssembly
                             userUpdate["isec_approvallevel"] = new OptionSetValue(560300001);//Approval Lvl1
                             userUpdate["statuscode"] = new OptionSetValue(2);//On Hold
                             service.Update(userUpdate);
+
+                            // NEW: Send approval notification to each team member
+                            try
+                            {
+                                SendApprovalNotificationToTeamMembers(service, tracer, teamGuid, postimage);
+                            }
+                            catch (Exception ex)
+                            {
+                                tracer.Trace("SendApprovalNotificationToTeamMembers failed: " + ex.Message);
+                                // Do not block assignment on notification failure
+                            }
                         }
 
                     }
@@ -452,6 +476,75 @@ namespace IsecPluginAssembly
                 // If no configuration found, use round robin assignment as fallback
                 RoundRobin(service, tracer, postimage.ToEntityReference());
                 //*****END: IMPLEMENTED LOGIC - NO CONFIGURATION FOUND, USE ROUND ROBIN*****
+            }
+        }
+
+        /// <summary>
+        /// Query team members and send an approval notification email to each member.
+        /// From = team, To = user (systemuser). Email regarding = case.
+        /// </summary>
+        private static void SendApprovalNotificationToTeamMembers(IOrganizationService service, ITracingService tracer, Guid teamGuid, Entity caseEntity)
+        {
+            tracer.Trace("SendApprovalNotificationToTeamMembers - start for team: " + teamGuid.ToString());
+            // Query systemuser joined with teammembership where teamid = teamGuid
+            var userQuery = new QueryExpression("systemuser");
+            userQuery.ColumnSet = new ColumnSet("systemuserid", "internalemailaddress", "fullname");
+            var link = userQuery.AddLink("teammembership", "systemuserid", "systemuserid");
+            link.LinkCriteria.AddCondition("teamid", ConditionOperator.Equal, teamGuid);
+
+            EntityCollection userColl = service.RetrieveMultiple(userQuery);
+            if (userColl == null || userColl.Entities.Count == 0)
+            {
+                tracer.Trace("No members found for approval team " + teamGuid.ToString());
+                return;
+            }
+
+            foreach (var user in userColl.Entities)
+            {
+                try
+                {
+                    var toUserRef = new EntityReference("systemuser", user.Id);
+
+                    // Build email
+                    Entity email = new Entity("email");
+                    // From = team
+                    Entity fromParty = new Entity("activityparty");
+                    fromParty["partyid"] = new EntityReference("team", teamGuid);
+                    email["from"] = new Entity[] { fromParty };
+
+                    // To = user
+                    Entity toParty = new Entity("activityparty");
+                    toParty["partyid"] = toUserRef;
+                    EntityCollection toCollection = new EntityCollection();
+                    toCollection.Entities.Add(toParty);
+                    email["to"] = toCollection;
+
+                    // Subject/body — minimal informative content; customize as needed
+                    string srNumber = caseEntity.Contains("isec_srnumber") ? caseEntity.GetAttributeValue<string>("isec_srnumber") : caseEntity.Id.ToString();
+                    email["subject"] = $"Approval required for SR {srNumber}";
+                    string body = $"SR {srNumber} requires your approval. Case reference: {caseEntity.LogicalName} ({caseEntity.Id}). Please review in CRM.";
+                    email["description"] = body;
+
+                    // Regarding = case
+                    email["regardingobjectid"] = new EntityReference(caseEntity.LogicalName, caseEntity.Id);
+
+                    // Create and send email
+                    Guid emailId = service.Create(email);
+                    var sendReq = new SendEmailRequest
+                    {
+                        EmailId = emailId,
+                        TrackingToken = string.Empty,
+                        IssueSend = true
+                    };
+                    service.Execute(sendReq);
+
+                    tracer.Trace($"Approval notification sent to user {user.Id}");
+                }
+                catch (Exception exUser)
+                {
+                    tracer.Trace("Failed to send approval email to user " + user.Id + " - " + exUser.Message);
+                    // continue to next user
+                }
             }
         }
 
