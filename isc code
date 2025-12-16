@@ -1,0 +1,615 @@
+using Microsoft.Crm.Sdk.Messages;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.ServiceModel;
+using System.Text;
+using System.Threading.Tasks;
+using System.Text.RegularExpressions;
+using Microsoft.IdentityModel.Metadata;
+using Newtonsoft.Json.Linq;
+
+namespace IsecPluginAssembly
+{
+    public class CaseCreateAssignmentAsync : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            #region srvc
+            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            IOrganizationServiceFactory serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            IOrganizationService service = serviceFactory.CreateOrganizationService(context.UserId);
+            ITracingService tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            #endregion
+
+            tracingService.Trace("step 1");
+            if (context.InputParameters.Contains("Target") && context.InputParameters["Target"] is Entity && context.Depth <= 1)
+            {
+                try
+                {
+                    Entity TargetEntity = (Entity)context.InputParameters["Target"];
+                    if (context.MessageName.ToLower() == "create")
+                    {
+                        tracingService.Trace($"Incident Id {TargetEntity.Id}");
+                        if (TargetEntity.LogicalName == "incident") // Case
+                        {
+                            Entity postImage = context.PostEntityImages["postcaseimage"];
+                            Guid category = (postImage.Contains("isec_srtype2") && postImage.Attributes["isec_srtype2"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_srtype2").Id : Guid.Empty;
+
+                            Guid subcategory = (postImage.Contains("isec_srtype3") && postImage.Attributes["isec_srtype3"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_srtype3").Id : Guid.Empty;
+
+                            EntityReference subcategoryEnf = (postImage.Contains("isec_srtype3") && postImage.Attributes["isec_srtype3"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_srtype3") : null;
+
+                            int caseorigincode = (postImage.Contains("caseorigincode") && postImage.Attributes["caseorigincode"] != null) ?
+                                postImage.GetAttributeValue<OptionSetValue>("caseorigincode").Value : -1;
+
+                            Guid casedetailsid = (postImage.Contains("isec_casedetails") && postImage.Attributes["isec_casedetails"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_casedetails").Id : Guid.Empty;
+
+                            bool ticketingsr = (postImage.Contains("isec_ticketingsr") && postImage.Attributes["isec_ticketingsr"] != null) ?
+                                postImage.GetAttributeValue<bool>("isec_ticketingsr") : false;
+
+                            EntityReference ownerEnf = (postImage.Contains("ownerid") && postImage.Attributes["ownerid"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("ownerid") : null;
+
+                            EntityReference closerEnf = (postImage.Contains("isec_caseclosure") && postImage.Attributes["isec_caseclosure"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_caseclosure") : null;
+
+                            bool isescalated = (postImage.Contains("isec_isescalated") && postImage.Attributes["isec_isescalated"] != null) ?
+                                postImage.GetAttributeValue<bool>("isec_isescalated") : false;
+
+                            EntityReference moduleEnf = (postImage.Contains("isec_module") && postImage.Attributes["isec_module"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_module") : null;
+
+                            EntityReference customerEnf = (postImage.Contains("customerid") && postImage.Attributes["customerid"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("customerid") : null;
+
+                            EntityReference createdbyEnf = (postImage.Contains("createdby") && postImage.Attributes["createdby"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("createdby") : null;
+
+                            int approvallevel = (postImage.Contains("isec_approvallevel") && postImage.Attributes["isec_approvallevel"] != null) ?
+                                postImage.GetAttributeValue<OptionSetValue>("isec_approvallevel").Value : -1;
+
+                            string srnumber = (postImage.Contains("isec_srnumber") && postImage.Attributes["isec_srnumber"] != null) ?
+                                postImage.GetAttributeValue<string>("isec_srnumber") : string.Empty;
+
+                            string overalltat = string.Empty;
+
+                            DateTime resolveby = (postImage.Contains("isec_resolveby") && postImage.Attributes["isec_resolveby"] != null) ?
+                                postImage.GetAttributeValue<DateTime>("isec_resolveby") : DateTime.MinValue;
+
+                            //*****START: IMPLEMENTED LOGIC - RETRIEVE SRTYPE2 NAME FOR ISSUE TYPE IDENTIFICATION*****
+                            EntityReference srtype2Enf = (postImage.Contains("isec_srtype2") && postImage.Attributes["isec_srtype2"] != null) ?
+                                postImage.GetAttributeValue<EntityReference>("isec_srtype2") : null;
+
+                            string issueTypeName = string.Empty;
+                            if (srtype2Enf != null)
+                            {
+                                Entity srtype2Entity = service.Retrieve(srtype2Enf.LogicalName, srtype2Enf.Id, new ColumnSet("isec_name"));
+                                issueTypeName = (srtype2Entity.Contains("isec_name") && srtype2Entity.Attributes["isec_name"] != null) ?
+                                    srtype2Entity.GetAttributeValue<string>("isec_name") : string.Empty;
+                                tracingService.Trace($"Issue Type Name: {issueTypeName}");
+                            }
+                            //*****END: IMPLEMENTED LOGIC - RETRIEVE SRTYPE2 NAME FOR ISSUE TYPE IDENTIFICATION*****
+
+                            if (!ticketingsr)
+                            {
+                                throw new InvalidPluginExecutionException("Not a Ticketing SR");
+                            }
+
+                            if (ownerEnf == null)
+                            {
+                                throw new InvalidPluginExecutionException("Owner Empty");
+                            }
+
+                            #region Config
+                            string queueId = string.Empty;
+                            string baseUrl = string.Empty;
+
+                            QueryExpression getconfig = new QueryExpression("isec_globalconfiguration");
+                            FilterExpression filter = new FilterExpression(LogicalOperator.Or);
+                            filter.Conditions.Add(new ConditionExpression("isec_name", ConditionOperator.Equal, "Ticketing Email Sender QueueID"));
+                            filter.Conditions.Add(new ConditionExpression("isec_name", ConditionOperator.Equal, "Ticketing CRM URL"));
+                            getconfig.Criteria.AddFilter(filter);
+                            getconfig.ColumnSet = new ColumnSet("isec_name", "isec_value");
+
+                            EntityCollection configcoll = service.RetrieveMultiple(getconfig);
+                            if (configcoll.Entities.Count > 0)
+                            {
+                                foreach (Entity GbconfigEnt in configcoll.Entities)
+                                {
+                                    string value = GbconfigEnt.GetAttributeValue<string>("isec_value");
+                                    string name = GbconfigEnt.GetAttributeValue<string>("isec_name");
+                                    if (name == "Ticketing Email Sender QueueID")
+                                    {
+                                        queueId = value;
+                                    }
+                                    else if (name == "Ticketing CRM URL")
+                                    {
+                                        baseUrl = value;
+                                    }
+                                }
+                            }
+                            #endregion
+
+                            //*****START: IMPLEMENTED LOGIC - ASSIGNMENT BASED ON ISSUE TYPE FROM DPC DOCUMENT*****
+                            tracingService.Trace("Starting Issue Type Based Assignment Logic");
+
+                            // Check if assignment logic should be applied based on issue type
+                            bool assignmentHandled = false;
+
+                            if (!string.IsNullOrEmpty(issueTypeName))
+                            {
+                                // 1) Issue Type - Operational Issue (already exist)
+                                if (issueTypeName.ToLower().Contains("operational issue"))
+                                {
+                                    tracingService.Trace("Operational Issue detected - Assigning based on module and sub-module");
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                                // 2) Issue Type - Website Issue (already exist)
+                                else if (issueTypeName.ToLower().Contains("website issue"))
+                                {
+                                    tracingService.Trace("Website Issue detected - Assigning to webprod team");
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                                // 3) Issue Type - Mobile App Issue (already exist)
+                                else if (issueTypeName.ToLower().Contains("mobile app issue"))
+                                {
+                                    tracingService.Trace("Mobile App Issue detected - Assigning to webprod team");
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                                // 4) Issue Type - Backend Data Update (already exist)
+                                else if (issueTypeName.ToLower().Contains("backend data update"))
+                                {
+                                    tracingService.Trace("Backend Data Update detected - Assigning to webprod team");
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                                // 5) Issue Type - Data Request (already exist)
+                                else if (issueTypeName.ToLower().Contains("data request"))
+                                {
+                                    tracingService.Trace("Data Request detected - Checking for approval requirement");
+
+                                    //*****START: CHECK IF RISK APPROVER NEEDS TO BE ADDED (PHI DATA HANDLING)*****
+                                    if (subcategoryEnf != null)
+                                    {
+                                        Entity subcategoryEntity = service.Retrieve(subcategoryEnf.LogicalName, subcategoryEnf.Id, new ColumnSet("isec_name"));
+                                        string subModuleName = (subcategoryEntity.Contains("isec_name") && subcategoryEntity.Attributes["isec_name"] != null) ?
+                                            subcategoryEntity.GetAttributeValue<string>("isec_name") : string.Empty;
+
+                                        // Check if sub-module is Compliance or RISK Data requiring approval
+                                        if (subModuleName.ToLower().Contains("compliance") || subModuleName.ToLower().Contains("risk"))
+                                        {
+                                            tracingService.Trace("Compliance/RISK Data detected - Adding approval requirement");
+                                            // Set approval required flag
+                                            Entity caseUpdate = new Entity(postImage.LogicalName, postImage.Id);
+                                            caseUpdate["isec_approvalrequired"] = true;
+                                            caseUpdate["isec_approvallevel"] = new OptionSetValue(560300001); // Approval Lvl1
+                                            service.Update(caseUpdate);
+                                        }
+                                    }
+                                    //*****END: CHECK IF RISK APPROVER NEEDS TO BE ADDED (PHI DATA HANDLING)*****
+
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                                // 6) Issue Type - MIS or Report Changes (We need same approval flow as like Data Request)
+                                else if (issueTypeName.ToLower().Contains("mis") || issueTypeName.ToLower().Contains("report changes"))
+                                {
+                                    tracingService.Trace("MIS or Report Changes detected - Checking for approval requirement");
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                                // 7) Add note option in every issue type - This is handled at sub-module level
+                                else
+                                {
+                                    tracingService.Trace("Other issue type detected - Using standard assignment logic");
+                                    AssignCaseTicketing(service, tracingService, srtype2Enf, postImage, moduleEnf);
+                                    assignmentHandled = true;
+                                }
+                            }
+
+                            // If no specific issue type matched, use Round Robin assignment
+                            if (!assignmentHandled)
+                            {
+                                tracingService.Trace("No specific issue type matched - Using Round Robin assignment");
+                                RoundRobin(service, tracingService, postImage.ToEntityReference());
+                            }
+                            //*****END: IMPLEMENTED LOGIC - ASSIGNMENT BASED ON ISSUE TYPE FROM DPC DOCUMENT*****
+
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tracingService.Trace($"Error: {ex.Message}");
+                    throw new InvalidPluginExecutionException($"Error in CaseCreateAssignmentAsync: {ex.Message}");
+                }
+            }
+        }
+
+        #region Round Robin
+
+        public static void RoundRobin(IOrganizationService service, ITracingService tracingService, EntityReference caseEnf)
+        {
+            tracingService.Trace($"Inside Ticketing RoundRobin {caseEnf.Id}");
+            if (caseEnf == null)
+            {
+                tracingService.Trace("Invalidlead");
+                return;
+            }
+            QueryExpression userQuery = new QueryExpression("systemuser");
+            userQuery.ColumnSet = new ColumnSet("isec_roundrobinflag");
+            userQuery.Criteria.AddCondition("isec_ticketinguser", ConditionOperator.Equal, true);
+            userQuery.Criteria.AddCondition("isec_donotassign", ConditionOperator.NotEqual, true);//Not on holiday
+            EntityCollection usercoll = service.RetrieveMultiple(userQuery);
+            if (usercoll.Entities.Count == 0)
+            {
+                tracingService.Trace("No Ticketing User found");
+                return;
+            }
+            string RoundRobinFlag = "isec_roundrobinflag";
+            List<Tuple<Entity, Guid, bool>> userList = new List<Tuple<Entity, Guid, bool>>();
+            foreach (Entity enUser in usercoll.Entities)
+            {
+                if (enUser.Contains(RoundRobinFlag))
+                {
+                    userList.Add(new Tuple<Entity, Guid, bool>(enUser, enUser.Id, enUser.GetAttributeValue<bool>(RoundRobinFlag)));
+                }
+                else
+                    userList.Add(new Tuple<Entity, Guid, bool>(enUser, enUser.Id, false));
+            }
+            if (userList.Count == 1)
+            {
+                tracingService.Trace("Only one user found.");
+                Entity userFound = userList.FirstOrDefault().Item1;
+                AssignCase(service, tracingService, userFound.ToEntityReference(), caseEnf);
+                UpdateUserFlag(service, tracingService, RoundRobinFlag, userFound);
+                ShareLeadRecordsInt(service, caseEnf, userFound.ToEntityReference());
+            }
+            else
+            {
+                tracingService.Trace("User available = " + userList.Any(p => p.Item3 == false));
+                if (userList.Any(p => p.Item3 == false))
+                {
+                    Entity userWithFlagNo = userList.Where(p => p.Item3 == false).FirstOrDefault().Item1;
+                    AssignCase(service, tracingService, userWithFlagNo.ToEntityReference(), caseEnf);
+                    UpdateUserFlag(service, tracingService, RoundRobinFlag, userWithFlagNo);
+                    ShareLeadRecordsInt(service, caseEnf, userWithFlagNo.ToEntityReference());
+                }
+                else
+                {
+                    Entity userfound = userList.FirstOrDefault().Item1;
+                    AssignCase(service, tracingService, userfound.ToEntityReference(), caseEnf);
+                    tracingService.Trace("User update when flag exhausted");
+                    tracingService.Trace("Count check after removal = " + userList.Count);
+                    ResetFlag(service, tracingService, RoundRobinFlag, userList);
+                    UpdateUserFlag(service, tracingService, RoundRobinFlag, userfound);
+                    ShareLeadRecordsInt(service, caseEnf, userfound.ToEntityReference());
+                }
+            }
+        }
+
+        private static void UpdateUserFlag(IOrganizationService service, ITracingService tracer, string RoundRobinFlag, Entity enUser)
+        {
+            tracer.Trace("Inside UpdateUserFlag");
+            Entity userUpdate = new Entity(enUser.LogicalName, enUser.Id);
+            userUpdate[RoundRobinFlag] = true;
+            service.Update(userUpdate);
+        }
+
+        private static void AssignCase(IOrganizationService service, ITracingService tracer, EntityReference userEnf, EntityReference caseEnf)
+        {
+            tracer.Trace("Inside AssignCase");
+            Entity userUpdate = new Entity(caseEnf.LogicalName, caseEnf.Id);
+            userUpdate["ownerid"] = userEnf;
+            userUpdate["isec_approvallevel"] = new OptionSetValue(560300001);//Approval Lvl1
+            service.Update(userUpdate);
+        }
+
+        private static void ResetFlag(IOrganizationService service, ITracingService tracer, string RoundRobinFlag, List<Tuple<Entity, Guid, bool>> userList)
+        {
+            tracer.Trace("Inside ResetFlag");
+            int count = 0;
+            // Create an ExecuteMultipleRequest object.
+            var multipleRequest = new ExecuteMultipleRequest()
+            {
+                // Assign settings that define execution behavior: continue on error, return responses.
+                Settings = new ExecuteMultipleSettings()
+                {
+                    ContinueOnError = true,
+                    ReturnResponses = true
+                },
+                // Create an empty organization request collection.
+                Requests = new OrganizationRequestCollection()
+            };
+            foreach (var item in userList)
+            {
+                Entity setUser = item.Item1;
+                Entity userUpdate = new Entity(setUser.LogicalName, setUser.Id);
+                userUpdate[RoundRobinFlag] = false;
+                multipleRequest.Requests.Add(new UpdateRequest { Target = userUpdate });
+                count++;
+                if (multipleRequest.Requests.Count > 199 || userList.Count() == count)
+                {
+                    ExecuteMultipleResponse executeMultipleResponse = (ExecuteMultipleResponse)service.Execute(multipleRequest);
+                    if (executeMultipleResponse.IsFaulted)
+                    {
+                        for (int k = 0; k < executeMultipleResponse.Responses.Count; k++)
+                        {
+                            if (executeMultipleResponse.Responses[k].Fault != null)
+
+                            {
+                                tracer.Trace("Error occured - " + executeMultipleResponse.Responses[k].Fault.Message + Environment.NewLine + executeMultipleResponse.Responses[k].Fault.ErrorDetails);
+                            }
+                        }
+                    }
+                    multipleRequest.Requests = new OrganizationRequestCollection();
+                }
+            }
+        }
+
+        private static void ShareLeadRecordsInt(IOrganizationService service, EntityReference entity, EntityReference segmentUser)
+        {
+            var CreatedReference = new EntityReference("systemuser", segmentUser.Id);
+            var grantAccessRequest = new GrantAccessRequest
+            {
+                PrincipalAccess = new PrincipalAccess
+                {
+                    AccessMask = AccessRights.ReadAccess,
+                    Principal = CreatedReference
+                },
+                Target = new EntityReference(entity.LogicalName, entity.Id)
+            };
+            service.Execute(grantAccessRequest);
+        }
+
+        #endregion
+
+        #region TicketingSR Assignment
+
+        public static void AssignCaseTicketing(IOrganizationService service, ITracingService tracer, EntityReference srType2enf, Entity postimage, EntityReference moduleEnf)
+        {
+            tracer.Trace($"Inside AssignCase Srtype2 {srType2enf.Name}");
+            if (srType2enf == null)
+            {
+                return;
+            }
+
+            //*****START: IMPLEMENTED LOGIC - QUERY ASSIGNMENT CONFIGURATOR WITH MODULE HANDLING*****
+            QueryExpression query = new QueryExpression("isec_ticketingassignmentconfigurator");
+            query.Criteria.AddCondition("isec_srtype2", ConditionOperator.Equal, srType2enf.Id);
+
+            // Module handling: Keep same which are already existing (no change)
+            if (moduleEnf != null)
+            {
+                query.Criteria.AddCondition("isec_module", ConditionOperator.Equal, moduleEnf.Id);
+            }
+
+            query.ColumnSet = new ColumnSet("isec_assignedteam", "isec_approvalrequired");
+            //*****END: IMPLEMENTED LOGIC - QUERY ASSIGNMENT CONFIGURATOR WITH MODULE HANDLING*****
+
+            EntityCollection coll = service.RetrieveMultiple(query);
+            if (coll.Entities.Count > 0)
+            {
+                Entity configEnt = coll.Entities.First();
+                EntityReference teamEnf = (configEnt.Contains("isec_assignedteam") && configEnt.Attributes["isec_assignedteam"] != null) ? configEnt.GetAttributeValue<EntityReference>("isec_assignedteam") : null;
+                bool approvalrequired = (configEnt.Contains("isec_approvalrequired") && configEnt.Attributes["isec_approvalrequired"] != null) ? configEnt.GetAttributeValue<bool>("isec_approvalrequired") : false;
+
+                //*****START: IMPLEMENTED LOGIC - ASSIGNMENT BASED ON APPROVAL REQUIREMENT*****
+                if (!approvalrequired && teamEnf != null)
+                {
+                    tracer.Trace("Inside AssignCase - No approval required, assigning to team");
+                    Entity userUpdate = new Entity(postimage.LogicalName, postimage.Id);
+                    userUpdate["ownerid"] = teamEnf;
+                    service.Update(userUpdate);
+                }
+                else if (approvalrequired)
+                {
+                    tracer.Trace("Approval required - Assigning to approval team basis current level");
+                    // Assign to approval team basis current level
+                    int approvallevel = (postimage.Contains("isec_approvallevel") && postimage.Attributes["isec_approvallevel"] != null) ? postimage.GetAttributeValue<OptionSetValue>("isec_approvallevel").Value : -1;
+
+                    if (approvallevel == 560300000) // Unapproved
+                    {
+                        string teamId = string.Empty;
+                        QueryExpression getconfig = new QueryExpression("isec_globalconfiguration");
+                        getconfig.Criteria.AddCondition(new ConditionExpression("isec_name", ConditionOperator.Equal, "Ticketing Approval Level 1 Team ID"));
+                        getconfig.ColumnSet = new ColumnSet("isec_name", "isec_value");
+                        EntityCollection configcoll = service.RetrieveMultiple(getconfig);
+                        if (configcoll.Entities.Count > 0)
+                        {
+                            Entity GbconfigEnt = configcoll.Entities[0];
+                            teamId = (GbconfigEnt.Contains("isec_value") && GbconfigEnt.Attributes["isec_value"] != null) ? GbconfigEnt.GetAttributeValue<string>("isec_value") : string.Empty;
+                        }
+                        if (!string.IsNullOrEmpty(teamId))
+                        {
+                            Guid teamGuid = new Guid(teamId);
+                            tracer.Trace("Inside AssignCase - Assigning to Approval Level 1 Team");
+                            Entity userUpdate = new Entity(postimage.LogicalName, postimage.Id);
+                            userUpdate["ownerid"] = new EntityReference("team", teamGuid);
+                            userUpdate["isec_approvallevel"] = new OptionSetValue(560300001);//Approval Lvl1
+                            userUpdate["statuscode"] = new OptionSetValue(2);//On Hold
+                            service.Update(userUpdate);
+                        }
+
+                    }
+                }
+                //*****END: IMPLEMENTED LOGIC - ASSIGNMENT BASED ON APPROVAL REQUIREMENT*****
+            }
+            else
+            {
+                //*****START: IMPLEMENTED LOGIC - NO CONFIGURATION FOUND, USE ROUND ROBIN*****
+                tracer.Trace("No configuration found in ticketing assignment configurator - Using Round Robin");
+                // If no configuration found, use round robin assignment as fallback
+                RoundRobin(service, tracer, postimage.ToEntityReference());
+                //*****END: IMPLEMENTED LOGIC - NO CONFIGURATION FOUND, USE ROUND ROBIN*****
+            }
+        }
+
+        #endregion
+
+        #region SendEmail
+
+        private void SendEmail(IOrganizationService service, EntityReference fromEnf, ITracingService tracingService, string emailtemp, EntityReference toEnf, EntityReference regEnf, string addressused, string interactionId, string tat)
+        {
+            if (fromEnf != null && (toEnf != null || !string.IsNullOrEmpty(addressused)) && regEnf != null)
+            {
+                if (emailtemp != null && emailtemp != "" && emailtemp != string.Empty)
+                {
+                    Entity email = new Entity("email");
+                    Guid templateId = GetTemplate(emailtemp, service);
+                    if (templateId != Guid.Empty)
+                    {
+                        //Instantiate template
+                        InstantiateTemplateRequest instTemplateReq = new InstantiateTemplateRequest
+                        {
+                            TemplateId = templateId,
+                            ObjectId = regEnf.Id,
+                            ObjectType = regEnf.LogicalName
+                        };
+                        InstantiateTemplateResponse instTemplateResp = (InstantiateTemplateResponse)service.Execute(instTemplateReq);
+
+                        if (instTemplateResp != null && instTemplateResp.EntityCollection.Entities.Count > 0)
+                        {
+                            Entity template = instTemplateResp.EntityCollection.Entities[0];
+                            if (template != null && template.Contains("subject") && template.Contains("description"))
+                            {
+                                Entity from = new Entity("activityparty");
+                                from["partyid"] = new EntityReference(fromEnf.LogicalName, fromEnf.Id);
+                                Entity[] sendFrom = { from };
+                                email["from"] = sendFrom;
+                                EntityCollection colSendTo = new EntityCollection();
+                                Entity Partytoowner = new Entity("activityparty");
+                                if (toEnf != null)
+                                {
+                                    Partytoowner["partyid"] = new EntityReference(toEnf.LogicalName, toEnf.Id);
+                                }
+                                else
+                                {
+                                    Partytoowner["addressused"] = addressused;
+                                }
+                                colSendTo.Entities.Add(Partytoowner);
+                                email["to"] = colSendTo;
+                                email["subject"] = template.GetAttributeValue<string>("subject");
+                                email["description"] = template.GetAttributeValue<string>("description").Replace("{TAT}", tat);
+                                email["regardingobjectid"] = new EntityReference(regEnf.LogicalName, regEnf.Id);
+                                email["isec_isacknowledgmentmail"] = true;
+                                if (!string.IsNullOrEmpty(interactionId))
+                                {
+                                    email["isec_interactionid"] = interactionId;
+                                    email["isec_parentinteractionid"] = interactionId;
+                                }
+                                Guid emailId = service.Create(email);
+                                SendEmailRequest sendEmailRequest = new SendEmailRequest
+                                {
+                                    EmailId = emailId,
+                                    TrackingToken = !string.IsNullOrEmpty(interactionId) ? interactionId : "",
+                                    IssueSend = true
+                                };
+                                SendEmailResponse sendEmailresp = (SendEmailResponse)service.Execute(sendEmailRequest);
+                            }
+                        }
+                    }
+                }
+
+
+            }
+        }
+
+        private Guid GetTemplate(string emailTemplate, IOrganizationService service)
+        {
+            Guid emailTemplateID = Guid.Empty;
+
+            QueryExpression emailtemplatefetch = new QueryExpression("template");
+            emailtemplatefetch.ColumnSet = new ColumnSet(false);
+
+            FilterExpression emailtemplatefilter = new FilterExpression(LogicalOperator.And);
+            emailtemplatefilter.AddCondition("title", ConditionOperator.Equal, emailTemplate);
+            emailtemplatefetch.Criteria.AddFilter(emailtemplatefilter);
+            EntityCollection emailtemplateColl = service.RetrieveMultiple(emailtemplatefetch);
+
+            if (emailtemplateColl.Entities.Count > 0)
+            {
+                emailTemplateID = emailtemplateColl.Entities[0].Id;
+            }
+            return emailTemplateID;
+
+        }
+
+        #endregion
+
+        #region SendSms
+
+        private Guid SendSms(IOrganizationService service, EntityReference fromEnf, ITracingService tracingService, string smstemp, EntityReference toEnf, EntityReference regEnf, EntityReference contactEnf, EntityReference srtype2Enf, string subject, string mobilenumber)
+        {
+            tracingService.Trace("Inside SendSMS");
+            Guid smsId = Guid.Empty;
+            Entity smsEnt = new Entity("letter");
+            EntityReference tempEnf = GetSmsTemplate(smstemp, service);
+            if (tempEnf != null)
+            {
+                if (regEnf != null && contactEnf != null && !string.IsNullOrEmpty(mobilenumber))
+                {
+                    tracingService.Trace("creating sms record");
+                    Entity from = new Entity("activityparty");
+                    from["partyid"] = new EntityReference(fromEnf.LogicalName, fromEnf.Id);
+                    Entity[] sendFrom = { from };
+                    smsEnt["from"] = sendFrom;
+                    EntityCollection colSendTo = new EntityCollection();
+                    Entity Partytoowner = new Entity("activityparty");
+                    if (toEnf != null)
+                    {
+                        Partytoowner["partyid"] = new EntityReference(toEnf.LogicalName, toEnf.Id);
+                    }
+                    colSendTo.Entities.Add(Partytoowner);
+                    smsEnt["to"] = colSendTo;
+                    smsEnt["subject"] = subject;
+                    smsEnt["description"] = "Case Creation Content";
+                    smsEnt["regardingobjectid"] = new EntityReference(regEnf.LogicalName, regEnf.Id);
+                    smsEnt["isec_srtype2"] = srtype2Enf;
+                    smsEnt["isec_case"] = regEnf;
+                    smsEnt["isec_contact"] = contactEnf;
+                    smsEnt["isec_template"] = tempEnf;
+                    smsEnt["isec_mobilenumber"] = mobilenumber;
+                    smsId = service.Create(smsEnt);
+                }
+                else
+                {
+                    tracingService.Trace("Mandatory fields empty");
+                }
+            }
+            else
+            {
+                tracingService.Trace("SMS template not found with template name " + smstemp);
+            }
+            return smsId;
+        }
+
+        private EntityReference GetSmsTemplate(string emailTemplate, IOrganizationService service)
+        {
+            EntityReference smsTempEnf = null;
+            QueryExpression smstempQuery = new QueryExpression("isec_template");
+            smstempQuery.ColumnSet = new ColumnSet(false);
+            FilterExpression emailtemplatefilter = new FilterExpression(LogicalOperator.And);
+            emailtemplatefilter.AddCondition("isec_name", ConditionOperator.Equal, emailTemplate);
+            smstempQuery.Criteria.AddFilter(emailtemplatefilter);
+            EntityCollection smstempColl = service.RetrieveMultiple(smstempQuery);
+            if (smstempColl.Entities.Count > 0)
+            {
+                smsTempEnf = smstempColl.Entities.FirstOrDefault().ToEntityReference();
+            }
+            return smsTempEnf;
+        }
+
+        #endregion
+    }
+}
