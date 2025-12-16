@@ -1,0 +1,375 @@
+Complete Explanation: What This Plugin Does in Dynamics 365 CRM
+Let me explain this plugin in detail - what happens step-by-step when a case is created in your D365 CRM.
+
+Primary Purpose
+This plugin automatically assigns support tickets (cases) to the right teams or users based on the issue type, module, and sub-module selected when creating a case.
+ When Does This Plugin Run?
+Trigger Event: When a new Case (Incident) is created in D365 CRM
+Execution Timing: After the case is saved to the database (Post-Operation, Asynchronous)
+Condition Check: Only runs if isec_ticketingsr (Ticketing SR) checkbox = Yes/True
+
+Step-by-Step Workflow
+STEP 1: Plugin Activates
+User creates a new Case in D365 CRM
+     ↓
+Case is saved to database
+     ↓
+Plugin wakes up and starts executing
+STEP 2: Data Collection
+The plugin collects information from the newly created case:
+FieldWhat It Containsisec_srtype2Issue Type (Category) - e.g., "Operational Issue", "Website Issue"isec_srtype3Sub-Module - e.g., "Login Error", "Compliance Data"isec_moduleModule - e.g., "Account Opening", "Payment"owneridCurrent owner of the caseisec_ticketingsrIs this a ticketing service request? (Yes/No)isec_approvallevelCurrent approval levelcustomeridCustomer who raised the caseisec_srnumberService request number
+STEP 3: Validation Checks
+csharp✓ Is this a Ticketing SR? (isec_ticketingsr = true)
+  └─ NO → Plugin stops, throws error "Not a Ticketing SR"
+  └─ YES → Continue
+
+✓ Does the case have an owner?
+  └─ NO → Plugin stops, throws error "Owner Empty"
+  └─ YES → Continue
+```
+
+STEP 4: Configuration Retrieval
+
+The plugin fetches system configurations from `isec_globalconfiguration` table:
+
+- **Ticketing Email Sender QueueID** - For sending notification emails
+- **Ticketing CRM URL** - Base URL of your CRM instance
+- **Ticketing Approval Level 1 Team ID** - Team that handles approvals
+
+STEP 5: Issue Type Identification
+
+The plugin reads the **Issue Type Name** from `isec_srtype2` and identifies which category it falls under:
+```
+┌─────────────────────────────────────────┐
+│  What Issue Type was selected?         │
+└─────────────────────────────────────────┘
+           ↓
+    ┌──────┴──────┐
+    │  Examples:  │
+    ├─────────────┤
+    │ • Operational Issue          │
+    │ • Website Issue              │
+    │ • Mobile App Issue           │
+    │ • Backend Data Update        │
+    │ • Data Request               │
+    │ • MIS or Report Changes      │
+    └─────────────────────────────┘
+```
+
+---
+
+## **🎲 Assignment Logic - The Decision Tree**
+
+### **Scenario 1: Operational Issue**
+```
+Issue Type = "Operational Issue"
+     ↓
+Plugin looks up: isec_ticketingassignmentconfigurator table
+     ↓
+Finds configuration matching:
+  • SR Type 2 (Issue Type)
+  • Module (if provided)
+     ↓
+DECISION POINT:
+     ↓
+Is Approval Required = NO?
+  └─ YES → Assigns case to configured team immediately
+     ↓
+Is Approval Required = YES?
+  └─ YES → Assigns to "Approval Level 1 Team"
+          Sets status to "On Hold"
+          Waits for approval
+```
+
+**Real Example:**
+```
+User creates case:
+  Issue Type: Operational Issue
+  Module: Account Opening - RI
+  Sub-Module: Account Opening - RI
+
+Plugin checks configuration table and finds:
+  → Assigned Team: "Account Opening Team"
+  → Approval Required: No
+
+Result: Case is assigned to "Account Opening Team"
+```
+
+---
+
+### **Scenario 2: Data Request (with PHI/Compliance Check)**
+```
+Issue Type = "Data Request"
+     ↓
+Plugin checks Sub-Module name
+     ↓
+Is Sub-Module "Compliance" or "RISK" related?
+  └─ YES → Sets approval flag
+          Updates approval level to "Level 1"
+     ↓
+  └─ NO → No approval needed
+     ↓
+Looks up assignment configuration
+     ↓
+Assigns to configured team
+```
+
+Real Example:
+```
+User creates case:
+  Issue Type: Data Request
+  Module: Audit Data
+  Sub-Module: Compliance or RISK Data
+
+Plugin detects: "Compliance" keyword in sub-module
+  → Sets isec_approvalrequired = true
+  → Sets isec_approvallevel = "Approval Lvl1"
+  → Assigns to "Ticketing Approval Level 1 Team"
+  → Sets status = "On Hold"
+
+Result: Case goes to approval team first before data team
+```
+
+---
+
+Scenario 3: Website/Mobile App Issues
+```
+Issue Type = "Website Issue" OR "Mobile App Issue"
+     ↓
+Plugin looks up configuration for this issue type
+     ↓
+Assigns to "Webprod Team" (or configured team)
+```
+
+**Real Example:**
+```
+User creates case:
+  Issue Type: Website Issue
+  Sub-Module: Login Error
+
+Plugin finds configuration:
+  → Assigned Team: "Webprod Team"
+
+Result: Case is assigned to Webprod Team
+```
+
+---
+
+Scenario 4: No Configuration Found (Fallback)
+```
+Plugin searches configuration table
+     ↓
+No matching configuration found
+     ↓
+FALLBACK: Use Round Robin Assignment
+     ↓
+Queries all active ticketing users:
+  • isec_ticketinguser = true
+  • isec_donotassign ≠ true (not on holiday)
+     ↓
+Finds user with Round Robin flag = false
+     ↓
+Assigns case to that user
+Updates flag to true for next assignment
+```
+Real Example:
+```
+User creates case:
+  Issue Type: "New Custom Issue Type"
+  (No configuration exists for this)
+
+Plugin activates fallback:
+  1. Finds users: Alice, Bob, Charlie
+  2. Checks flags:
+     Alice: flag = true (already got assignment)
+     Bob: flag = false ← Available!
+     Charlie: flag = true
+  3. Assigns case to Bob
+  4. Sets Bob's flag = true
+  5. Next case will go to Charlie
+
+Result: Fair distribution among team members
+```
+ Round Robin Logic Explained
+
+The Round Robin ensures **fair workload distribution** among support agents:
+
+How It Works:
+```
+┌────────────────────────────────────────┐
+│  Available Ticketing Users             │
+├────────────────────────────────────────┤
+│  User A  |  Flag = False  | Available  │
+│  User B  |  Flag = True   | Used       │
+│  User C  |  Flag = True   | Used       │
+└────────────────────────────────────────┘
+           ↓
+    Assign to User A
+           ↓
+┌────────────────────────────────────────┐
+│  User A  |  Flag = True   | Used       │
+│  User B  |  Flag = True   | Used       │
+│  User C  |  Flag = True   | Used       │
+└────────────────────────────────────────┘
+           ↓
+    All flags are True!
+    Reset all flags to False
+           ↓
+┌────────────────────────────────────────┐
+│  User A  |  Flag = False  | Available  │
+│  User B  |  Flag = False  | Available  │
+│  User C  |  Flag = False  | Available  │
+└────────────────────────────────────────┘
+           ↓
+    Assign to User A again
+    (Cycle repeats)
+```
+
+User Filter Criteria:
+Only users who meet ALL these conditions are included:
+- `isec_ticketinguser` = **true** (marked as ticketing agent)
+- `isec_donotassign` = **false** (not on vacation/holiday)
+- Active in the system
+
+
+Configuration Tables Used
+
+1. isec_ticketingassignmentconfigurator
+This is the **assignment rule table** that defines which team handles which issue type.
+
+**Example Records:**
+
+| SR Type 2 | Module | Assigned Team | Approval Required |
+|-----------|--------|---------------|-------------------|
+| Operational Issue | Account Opening - RI | Account Opening Team | No |
+| Operational Issue | Payment related | Payment Team | Yes |
+| Website Issue | (Any) | Webprod Team | No |
+| Data Request | Compliance Data | DPC Team | Yes |
+| Backend Data Update | (Any) | Webprod Team | No |
+
+2. isec_globalconfiguration
+System-wide settings:
+
+| Name | Value |
+|------|-------|
+| Ticketing Email Sender QueueID | {GUID-of-queue} |
+| Ticketing CRM URL | https://yourorg.crm.dynamics.com |
+| Ticketing Approval Level 1 Team ID | {GUID-of-approval-team} |
+
+Real-World Scenarios
+
+Scenario A: Simple Assignment
+``` User Action:
+   Create Case → Issue Type: "Website Issue"
+                 Sub-Module: "Portfolio Error"
+Plugin Logic:
+   1. Detects "Website Issue"
+   2. Queries configuration table
+   3. Finds: Assigned Team = "Webprod Team"
+   4. Approval Required = No
+ Result:
+   Case Owner = Webprod Team
+   Status = Active (ready to work)
+```
+
+Scenario B: Approval Required**
+```
+ User Action:
+   Create Case → Issue Type: "Data Request"
+                 Sub-Module: "Compliance or RISK Data"
+
+ Plugin Logic:
+   1. Detects "Data Request"
+   2. Checks sub-module: Contains "Compliance"
+   3. Sets approval required = true
+   4. Queries configuration for approval team
+   5. Finds: Approval Level 1 Team
+
+ Result:
+   Case Owner = Approval Level 1 Team
+   Approval Level = Level 1
+   Status = On Hold (waiting approval)
+```
+
+Scenario C: Round Robin Fallback**
+``` User Action:
+   Create Case → Issue Type: "Unknown Issue"
+                 (No configuration exists)
+
+ Plugin Logic:
+   1. Searches configuration table
+   2. No match found
+   3. Activates Round Robin
+   4. Finds available user: Sarah (flag = false)
+   5. Assigns to Sarah
+   6. Sets Sarah's flag = true
+
+ Result:
+   Case Owner = Sarah Johnson
+   Approval Level = Level 1
+   Status = Active
+ Additional Features (SendEmail & SendSMS)
+The plugin also has methods to send notifications:
+SendEmail Method:
+
+Creates email activity in CRM
+Uses email templates
+Links email to the case
+Replaces placeholders like {TAT} with actual turnaround time
+Tracks interaction IDs for threading
+
+SendSMS Method:
+
+Creates SMS activity (stored as "letter" entity)
+Links to case, contact, and template
+Stores mobile number
+Can be triggered after assignment
+
+(Note: These methods exist in the code but are not called in the current implementation - you would need to add calls to them in the main Execute method if you want notifications)
+
+ Tracing & Debugging
+Throughout execution, the plugin writes logs:
+csharptracingService.Trace("Issue Type Name: Operational Issue");
+tracingService.Trace("Operational Issue detected - Assigning based on module");
+tracingService.Trace("Inside AssignCase - No approval required");
+```
+
+These logs can be viewed in:
+- **Plugin Trace Log** entity in D365
+- **System Jobs** for async plugins
+- Helps troubleshoot if assignment fails
+
+ Error Handling
+
+If something goes wrong:
+```
+Plugin encounters error
+     ↓
+Logs error details to trace
+     ↓
+Throws InvalidPluginExecutionException
+     ↓
+User sees error message in D365
+     ↓
+Case creation may be rolled back (depending on stage)
+
+ Summary: What Happens in D365
+
+User creates a case with issue type, module, and sub-module
+Plugin activates after case is saved
+Validates it's a ticketing SR with an owner
+Identifies the issue type from category field
+Checks if approval is required (for compliance/risk data)
+Queries configuration table for assignment rules
+Assigns case to:
+
+Configured team (if rule exists)
+Approval team (if approval needed)
+Round Robin user (if no configuration found)
+
+
+Updates case owner, approval level, and status
+Grants read access to assigned user
+Logs all actions for audit trail
+
+End Result: Every ticketing case is automatically assigned to the right person/team based on business rules, ensuring no case is left unassigned and workload is fairly distributed!Claude is AI and can make mistakes. Please double-check responses.
